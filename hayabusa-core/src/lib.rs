@@ -45,6 +45,7 @@ pub mod head;
 pub mod hot_reload;
 pub mod i18n;
 pub mod image;
+pub mod interactivity;
 pub mod layout;
 pub mod markdown;
 pub mod middleware;
@@ -150,6 +151,13 @@ pub mod prelude {
 
     // Data Loader (DX: load data from JSON/Python/Node/any language)
     pub use crate::data_loader::DataLoader;
+
+    // Client-Side Interactivity (htmx / Alpine.js / Petite-Vue)
+    pub use crate::interactivity::{
+        AlpineComponent, ClientFramework, HtmxAttrs, InteractivityConfig,
+        alpine_modal, alpine_tabs, alpine_toast_system, alpine_toggle,
+        htmx_form, htmx_infinite_scroll, htmx_live_search,
+    };
 
     // Re-export macros
     pub use hayabusa_macros::html;
