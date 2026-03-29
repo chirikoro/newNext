@@ -1,0 +1,16 @@
+[package]
+name = "hayabusa-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hayabusa"
+path = "src/main.rs"
+
+[dependencies]
+hayabusa-core = { path = "../hayabusa-core" }
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+notify = { version = "6", features = ["macos_fsevent"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
