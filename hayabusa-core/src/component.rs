@@ -40,7 +40,32 @@ impl RenderResult {
     }
 }
 
-/// Metadata for the HTML <head> section (SEO optimization)
+/// Link relation types for resource hints
+#[derive(Debug, Clone)]
+pub enum LinkRel {
+    /// Standard stylesheet link
+    Stylesheet,
+    /// Preload: fetch resource early with high priority
+    Preload { as_type: String },
+    /// Prefetch: fetch resource for future navigation (low priority)
+    Prefetch,
+    /// DNS Prefetch: resolve DNS for external domain early
+    DnsPrefetch,
+    /// Preconnect: establish connection to external domain early
+    Preconnect,
+    /// Module preload for ES modules
+    ModulePreload,
+}
+
+/// A link element for the <head>
+#[derive(Debug, Clone)]
+pub struct LinkEntry {
+    pub rel: LinkRel,
+    pub href: String,
+    pub crossorigin: bool,
+}
+
+/// Metadata for the HTML <head> section (SEO + performance optimization)
 #[derive(Debug, Clone, Default)]
 pub struct HeadContext {
     pub title: Option<String>,
@@ -52,6 +77,8 @@ pub struct HeadContext {
     pub extra_meta: Vec<(String, String)>,
     pub extra_links: Vec<String>,
     pub scripts: Vec<String>,
+    /// Resource hints (preload, prefetch, dns-prefetch, preconnect)
+    pub resource_hints: Vec<LinkEntry>,
 }
 
 impl HeadContext {
@@ -99,9 +126,49 @@ impl HeadContext {
         self
     }
 
+    /// Add a preload hint for a critical resource (CSS, font, script, image)
+    pub fn preload(mut self, href: impl Into<String>, as_type: impl Into<String>) -> Self {
+        self.resource_hints.push(LinkEntry {
+            rel: LinkRel::Preload { as_type: as_type.into() },
+            href: href.into(),
+            crossorigin: false,
+        });
+        self
+    }
+
+    /// Add a prefetch hint for a resource needed on future navigation
+    pub fn prefetch(mut self, href: impl Into<String>) -> Self {
+        self.resource_hints.push(LinkEntry {
+            rel: LinkRel::Prefetch,
+            href: href.into(),
+            crossorigin: false,
+        });
+        self
+    }
+
+    /// Add a dns-prefetch hint for an external domain
+    pub fn dns_prefetch(mut self, domain: impl Into<String>) -> Self {
+        self.resource_hints.push(LinkEntry {
+            rel: LinkRel::DnsPrefetch,
+            href: domain.into(),
+            crossorigin: false,
+        });
+        self
+    }
+
+    /// Add a preconnect hint for an external domain
+    pub fn preconnect(mut self, domain: impl Into<String>) -> Self {
+        self.resource_hints.push(LinkEntry {
+            rel: LinkRel::Preconnect,
+            href: domain.into(),
+            crossorigin: true,
+        });
+        self
+    }
+
     /// Render the head context into HTML meta tags
     pub fn render(&self) -> String {
-        let mut html = String::new();
+        let mut html = String::with_capacity(512);
 
         if let Some(ref title) = self.title {
             html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
@@ -143,12 +210,63 @@ impl HeadContext {
                 html_escape(content)
             ));
         }
+
+        // Resource hints (preload, prefetch, dns-prefetch, preconnect)
+        // These go BEFORE stylesheets and scripts for maximum effectiveness
+        for link in &self.resource_hints {
+            let crossorigin = if link.crossorigin { " crossorigin" } else { "" };
+            match &link.rel {
+                LinkRel::Preload { as_type } => {
+                    html.push_str(&format!(
+                        "<link rel=\"preload\" href=\"{}\" as=\"{}\"{} />\n",
+                        html_escape(&link.href),
+                        html_escape(as_type),
+                        crossorigin
+                    ));
+                }
+                LinkRel::Prefetch => {
+                    html.push_str(&format!(
+                        "<link rel=\"prefetch\" href=\"{}\" />\n",
+                        html_escape(&link.href)
+                    ));
+                }
+                LinkRel::DnsPrefetch => {
+                    html.push_str(&format!(
+                        "<link rel=\"dns-prefetch\" href=\"{}\" />\n",
+                        html_escape(&link.href)
+                    ));
+                }
+                LinkRel::Preconnect => {
+                    html.push_str(&format!(
+                        "<link rel=\"preconnect\" href=\"{}\"{} />\n",
+                        html_escape(&link.href),
+                        crossorigin
+                    ));
+                }
+                LinkRel::ModulePreload => {
+                    html.push_str(&format!(
+                        "<link rel=\"modulepreload\" href=\"{}\" />\n",
+                        html_escape(&link.href)
+                    ));
+                }
+                LinkRel::Stylesheet => {
+                    html.push_str(&format!(
+                        "<link rel=\"stylesheet\" href=\"{}\" />\n",
+                        html_escape(&link.href)
+                    ));
+                }
+            }
+        }
+
+        // Stylesheets
         for href in &self.extra_links {
             html.push_str(&format!(
                 "<link rel=\"stylesheet\" href=\"{}\" />\n",
                 html_escape(href)
             ));
         }
+
+        // Scripts
         for src in &self.scripts {
             html.push_str(&format!(
                 "<script src=\"{}\"></script>\n",
@@ -198,5 +316,40 @@ impl PageRequest {
 
     pub fn query_param(&self, key: &str) -> Option<&str> {
         self.query.get(key).map(|s| s.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_head_context_render_with_resource_hints() {
+        let head = HeadContext::new()
+            .title("Test")
+            .preload("/font.woff2", "font")
+            .prefetch("/next-page.js")
+            .dns_prefetch("https://cdn.example.com")
+            .preconnect("https://api.example.com")
+            .link("/style.css");
+
+        let rendered = head.render();
+        assert!(rendered.contains("<link rel=\"preload\" href=\"/font.woff2\" as=\"font\" />"));
+        assert!(rendered.contains("<link rel=\"prefetch\" href=\"/next-page.js\" />"));
+        assert!(rendered.contains("<link rel=\"dns-prefetch\" href=\"https://cdn.example.com\" />"));
+        assert!(rendered.contains("<link rel=\"preconnect\" href=\"https://api.example.com\" crossorigin />"));
+        assert!(rendered.contains("<link rel=\"stylesheet\" href=\"/style.css\" />"));
+    }
+
+    #[test]
+    fn test_resource_hints_before_stylesheets() {
+        let head = HeadContext::new()
+            .link("/style.css")
+            .preload("/critical.css", "style");
+
+        let rendered = head.render();
+        let preload_pos = rendered.find("rel=\"preload\"").unwrap();
+        let stylesheet_pos = rendered.find("rel=\"stylesheet\"").unwrap();
+        assert!(preload_pos < stylesheet_pos, "Preload hints should come before stylesheets");
     }
 }

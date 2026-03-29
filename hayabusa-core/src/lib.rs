@@ -41,11 +41,16 @@ pub mod static_gen;
 /// Prelude: import everything you need with `use hayabusa_core::prelude::*`
 pub mod prelude {
     pub use crate::app::HayabusaApp;
-    pub use crate::component::{HeadContext, PageHandler, PageRequest, RenderMode, RenderResult};
+    pub use crate::component::{
+        HeadContext, LinkRel, PageHandler, PageRequest, RenderMode, RenderResult,
+    };
     pub use crate::error::HayabusaError;
     pub use crate::layout::{FnLayout, Layout, RootLayout};
     pub use crate::middleware::MiddlewareConfig;
-    pub use crate::render::{html_response, json_response, render_page, render_streaming};
+    pub use crate::render::{
+        check_etag, generate_etag, html_response, json_response, minify_html, render_page,
+        render_streaming, suspense_placeholder, suspense_resolve,
+    };
     pub use crate::router::{ApiMethod, RouteTable};
     pub use crate::state::AppState;
     pub use crate::static_gen::StaticGenerator;

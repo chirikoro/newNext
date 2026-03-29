@@ -1,7 +1,6 @@
 use axum::{
     Router,
     extract::{Path as AxumPath, Query, Request},
-    response::{Html, IntoResponse},
     routing::{delete, get, patch, post, put},
 };
 use std::collections::HashMap;
@@ -95,6 +94,7 @@ impl HayabusaApp {
             let axum_handler = move |
                 path_params: Option<AxumPath<HashMap<String, String>>>,
                 Query(query): Query<HashMap<String, String>>,
+                req: Request,
             | {
                 let handler = handler.clone();
                 let render_mode = render_mode.clone();
@@ -103,6 +103,12 @@ impl HayabusaApp {
                 let pattern = pattern.clone();
 
                 async move {
+                    // Extract If-None-Match for ETag conditional requests (304 support)
+                    let if_none_match = req.headers()
+                        .get(http::header::IF_NONE_MATCH)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string());
+
                     let params = path_params
                         .map(|AxumPath(p)| p)
                         .unwrap_or_default();
@@ -114,14 +120,13 @@ impl HayabusaApp {
                     match render_mode {
                         RenderMode::Ssr => {
                             let result = handler(request).await;
-                            // Find applicable layouts
                             let root_layout = RootLayout::default();
                             let layout_refs: Vec<&dyn Layout> = if layouts_ref.contains_key("/") {
                                 vec![layouts_ref["/"].layout.as_ref()]
                             } else {
                                 vec![&root_layout as &dyn Layout]
                             };
-                            render::render_page(&result, &layout_refs)
+                            render::render_page(&result, &layout_refs, &RenderMode::Ssr)
                         }
                         RenderMode::Ssg { ref revalidate } => {
                             if let Some(ref sg) = static_gen_ref {
@@ -135,12 +140,37 @@ impl HayabusaApp {
                                         revalidate.clone(),
                                     )
                                     .await;
-                                Html(html).into_response()
+
+                                // ETag check for cached content
+                                let etag = render::generate_etag(&html);
+                                if let Some(resp) = render::check_etag(
+                                    if_none_match.as_deref(),
+                                    &etag,
+                                ) {
+                                    return resp;
+                                }
+
+                                let minified = render::minify_html(&html);
+                                let cache_header = if revalidate.is_some() {
+                                    let secs = revalidate.unwrap().as_secs();
+                                    format!("public, s-maxage={}, stale-while-revalidate={}", secs, secs * 2)
+                                } else {
+                                    "public, max-age=31536000, immutable".to_string()
+                                };
+
+                                axum::response::Response::builder()
+                                    .status(200)
+                                    .header("content-type", "text/html; charset=utf-8")
+                                    .header("cache-control", cache_header)
+                                    .header("etag", &etag)
+                                    .header("vary", "Accept-Encoding")
+                                    .body(axum::body::Body::from(minified))
+                                    .unwrap()
                             } else {
                                 let result = handler(request).await;
                                 let root_layout = RootLayout::default();
                                 let layout_refs: Vec<&dyn Layout> = vec![&root_layout as &dyn Layout];
-                                render::render_page(&result, &layout_refs)
+                                render::render_page(&result, &layout_refs, &render_mode)
                             }
                         }
                         RenderMode::Streaming => {
@@ -154,7 +184,7 @@ impl HayabusaApp {
                 }
             };
 
-            // Register with axum - handle both parameterized and static paths
+            // Register with axum
             let axum_path = page_route.path_pattern.clone();
             router = router.route(&axum_path, get(axum_handler));
         }
@@ -214,7 +244,7 @@ impl HayabusaApp {
         let host = self.host.clone();
         let (router, addr) = self.build_router();
 
-        tracing::info!("🚀 Hayabusa server starting at http://{}:{}", host, port);
+        tracing::info!("Hayabusa server starting at http://{}:{}", host, port);
 
         let listener = TcpListener::bind(addr)
             .await
@@ -233,3 +263,4 @@ impl Default for HayabusaApp {
         Self::new()
     }
 }
+
