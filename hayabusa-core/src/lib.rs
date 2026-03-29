@@ -50,10 +50,14 @@ pub mod render;
 pub mod router;
 pub mod script;
 pub mod server_action;
+pub mod rate_limit;
 pub mod service_worker;
+pub mod session;
 pub mod sse;
 pub mod state;
 pub mod static_gen;
+pub mod view_transition;
+pub mod web_vitals;
 
 /// Prelude: import everything you need with `use hayabusa_core::prelude::*`
 pub mod prelude {
@@ -112,6 +116,20 @@ pub mod prelude {
     pub use crate::error_boundary::{
         BoundaryError, ErrorBoundaryConfig, skeleton, skeleton_css,
     };
+
+    // View Transitions
+    pub use crate::view_transition::ViewTransitionConfig;
+
+    // Core Web Vitals
+    pub use crate::web_vitals::{
+        PerformanceBudget, web_vitals_script, server_timing_header,
+    };
+
+    // Rate Limiting
+    pub use crate::rate_limit::RateLimiter;
+
+    // Session Management
+    pub use crate::session::{Session, SessionConfig};
 
     // Re-export macros
     pub use hayabusa_macros::html;
