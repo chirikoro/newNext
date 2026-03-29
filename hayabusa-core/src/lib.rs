@@ -33,7 +33,11 @@
 
 pub mod app;
 pub mod component;
+pub mod critical_css;
+pub mod csp;
+pub mod early_hints;
 pub mod error;
+pub mod error_boundary;
 pub mod font;
 pub mod head;
 pub mod i18n;
@@ -46,6 +50,8 @@ pub mod render;
 pub mod router;
 pub mod script;
 pub mod server_action;
+pub mod service_worker;
+pub mod sse;
 pub mod state;
 pub mod static_gen;
 
@@ -86,6 +92,26 @@ pub mod prelude {
 
     // i18n
     pub use crate::i18n::{I18nConfig, TranslationStore};
+
+    // HTTP 103 Early Hints
+    pub use crate::early_hints::{EarlyHints, extract_early_hints_from_head};
+
+    // Critical CSS
+    pub use crate::critical_css::{CssOptimizer, extract_critical_rules, minify_css};
+
+    // SSE (Server-Sent Events)
+    pub use crate::sse::{SseEvent, SseStream, sse_client_script, sse_from_stream};
+
+    // Service Worker / PWA
+    pub use crate::service_worker::{ServiceWorkerConfig, PwaManifest};
+
+    // Content Security Policy
+    pub use crate::csp::{CspConfig, add_nonce_to_scripts, add_nonce_to_styles, strict_csp};
+
+    // Error & Loading Boundaries
+    pub use crate::error_boundary::{
+        BoundaryError, ErrorBoundaryConfig, skeleton, skeleton_css,
+    };
 
     // Re-export macros
     pub use hayabusa_macros::html;
