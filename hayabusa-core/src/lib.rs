@@ -33,29 +33,34 @@
 
 pub mod app;
 pub mod component;
+pub mod config_routes;
 pub mod critical_css;
 pub mod csp;
+pub mod data_loader;
 pub mod early_hints;
 pub mod error;
 pub mod error_boundary;
 pub mod font;
 pub mod head;
+pub mod hot_reload;
 pub mod i18n;
 pub mod image;
 pub mod layout;
+pub mod markdown;
 pub mod middleware;
 pub mod middleware_chain;
 pub mod ppr;
+pub mod rate_limit;
 pub mod render;
 pub mod router;
 pub mod script;
 pub mod server_action;
-pub mod rate_limit;
 pub mod service_worker;
 pub mod session;
 pub mod sse;
 pub mod state;
 pub mod static_gen;
+pub mod template_engine;
 pub mod view_transition;
 pub mod web_vitals;
 
@@ -130,6 +135,21 @@ pub mod prelude {
 
     // Session Management
     pub use crate::session::{Session, SessionConfig};
+
+    // Template Engine (DX: write pages as .html files)
+    pub use crate::template_engine::{TemplateContext, TemplateEngine, TemplateValue};
+
+    // Markdown Pages (DX: write pages as .md files)
+    pub use crate::markdown::{MarkdownPage, markdown_to_html};
+
+    // TOML Config Routes (DX: define routes in hayabusa.toml)
+    pub use crate::config_routes::AppConfig;
+
+    // Hot Reload (DX: instant browser refresh)
+    pub use crate::hot_reload::{hot_reload_script, reload_type_for_file, dev_error_overlay};
+
+    // Data Loader (DX: load data from JSON/Python/Node/any language)
+    pub use crate::data_loader::DataLoader;
 
     // Re-export macros
     pub use hayabusa_macros::html;
