@@ -36,12 +36,16 @@ pub mod component;
 pub mod error;
 pub mod font;
 pub mod head;
+pub mod i18n;
 pub mod image;
 pub mod layout;
 pub mod middleware;
+pub mod middleware_chain;
+pub mod ppr;
 pub mod render;
 pub mod router;
 pub mod script;
+pub mod server_action;
 pub mod state;
 pub mod static_gen;
 
@@ -64,6 +68,24 @@ pub mod prelude {
     pub use crate::script::{navigation_prefetch_script, OptimizedScript, ScriptStrategy};
     pub use crate::state::AppState;
     pub use crate::static_gen::StaticGenerator;
+
+    // Server Actions
+    pub use crate::server_action::{
+        ActionRegistry, ActionResult, FormData, action_field, action_result_to_response,
+        csrf_field, generate_csrf_token, validate_csrf_token,
+    };
+
+    // Partial Prerendering
+    pub use crate::ppr::{PartialPage, dynamic_slot};
+
+    // Per-route middleware chain
+    pub use crate::middleware_chain::{
+        MiddlewareChain, MiddlewareRequest, MiddlewareResult, PathMatcher,
+        middleware_result_to_response, parse_cookies, extract_geo,
+    };
+
+    // i18n
+    pub use crate::i18n::{I18nConfig, TranslationStore};
 
     // Re-export macros
     pub use hayabusa_macros::html;
