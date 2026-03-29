@@ -51,6 +51,7 @@ pub mod markdown;
 pub mod middleware;
 pub mod middleware_chain;
 pub mod mobile_pwa;
+pub mod openai;
 pub mod ppr;
 pub mod rate_limit;
 pub mod render;
@@ -62,6 +63,7 @@ pub mod session;
 pub mod sse;
 pub mod state;
 pub mod static_gen;
+pub mod supabase;
 pub mod template_engine;
 pub mod view_transition;
 pub mod web_vitals;
@@ -152,6 +154,12 @@ pub mod prelude {
 
     // Data Loader (DX: load data from JSON/Python/Node/any language)
     pub use crate::data_loader::DataLoader;
+
+    // Supabase Client (unofficial)
+    pub use crate::supabase::SupabaseClient;
+
+    // OpenAI Client (unofficial)
+    pub use crate::openai::{OpenAiClient, cosine_similarity, define_tool};
 
     // Mobile PWA
     pub use crate::mobile_pwa::{
