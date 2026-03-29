@@ -11,6 +11,10 @@
 //! - Nested layouts
 //! - Built-in middleware (compression, CORS, security headers)
 //! - SEO-friendly head management
+//! - Image optimization (srcset, WebP/AVIF, lazy loading, blur placeholder)
+//! - Font optimization (font-display:swap, size-adjust, preload)
+//! - Script loading strategies (defer, async, module, worker, afterInteractive)
+//! - Navigation prefetch on hover/viewport
 //!
 //! ## Quick Start
 //! ```ignore
@@ -30,11 +34,14 @@
 pub mod app;
 pub mod component;
 pub mod error;
+pub mod font;
 pub mod head;
+pub mod image;
 pub mod layout;
 pub mod middleware;
 pub mod render;
 pub mod router;
+pub mod script;
 pub mod state;
 pub mod static_gen;
 
@@ -45,6 +52,8 @@ pub mod prelude {
         HeadContext, LinkRel, PageHandler, PageRequest, RenderMode, RenderResult,
     };
     pub use crate::error::HayabusaError;
+    pub use crate::font::{FontFormat, FontWeight, OptimizedFont};
+    pub use crate::image::{ImagePriority, OptimizedImage};
     pub use crate::layout::{FnLayout, Layout, RootLayout};
     pub use crate::middleware::MiddlewareConfig;
     pub use crate::render::{
@@ -52,6 +61,7 @@ pub mod prelude {
         render_streaming, suspense_placeholder, suspense_resolve,
     };
     pub use crate::router::{ApiMethod, RouteTable};
+    pub use crate::script::{navigation_prefetch_script, OptimizedScript, ScriptStrategy};
     pub use crate::state::AppState;
     pub use crate::static_gen::StaticGenerator;
 

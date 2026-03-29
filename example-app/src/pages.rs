@@ -1,33 +1,55 @@
 use hayabusa_core::prelude::*;
+use hayabusa_core::font;
 use std::time::Duration;
 
 pub fn build_routes() -> RouteTable {
     RouteTable::new()
-        // Root layout
+        // Root layout with all optimizations
         .layout("/", Box::new(RootAppLayout))
-        // Home page (SSR)
+        // Home page (SSR) - with optimized image demo
         .page(
             "/",
             RenderMode::Ssr,
             Box::new(|_req| {
                 Box::pin(async move {
+                    // Optimized hero image with high priority + modern formats
+                    let hero_img = OptimizedImage::new("/images/hero.jpg", 1200, 600)
+                        .alt("Hayabusa Framework")
+                        .priority(ImagePriority::High)
+                        .sizes("(max-width: 768px) 100vw, 1200px")
+                        .placeholder("/images/hero-blur.jpg");
+                    let _hero_preload = hero_img.preload_link().unwrap_or_default();
+
                     RenderResult::new(html! {
                         <main class="container">
                             <section class="hero">
                                 <h1>"Hayabusa 隼"</h1>
                                 <p class="subtitle">"A blazing-fast full-stack web framework for Rust"</p>
+                                {hero_img.render()}
                                 <div class="features">
                                     <div class="feature">
-                                        <h3>"⚡ SSR"</h3>
+                                        <h3>"SSR"</h3>
                                         <p>"Server-Side Rendering for dynamic pages"</p>
                                     </div>
                                     <div class="feature">
-                                        <h3>"📦 SSG"</h3>
+                                        <h3>"SSG"</h3>
                                         <p>"Static Site Generation for maximum speed"</p>
                                     </div>
                                     <div class="feature">
-                                        <h3>"🔄 ISR"</h3>
+                                        <h3>"ISR"</h3>
                                         <p>"Incremental Static Regeneration for the best of both"</p>
+                                    </div>
+                                    <div class="feature">
+                                        <h3>"Image Opt"</h3>
+                                        <p>"Automatic WebP/AVIF, srcset, lazy loading, blur-up"</p>
+                                    </div>
+                                    <div class="feature">
+                                        <h3>"Font Opt"</h3>
+                                        <p>"Zero-CLS fonts with size-adjust and preload"</p>
+                                    </div>
+                                    <div class="feature">
+                                        <h3>"Prefetch"</h3>
+                                        <p>"Automatic link prefetch on hover and viewport"</p>
                                     </div>
                                 </div>
                             </section>
@@ -38,7 +60,10 @@ pub fn build_routes() -> RouteTable {
                             .title("Hayabusa - Rust Full-Stack Framework")
                             .description("A high-performance full-stack web framework for Rust")
                             .og_title("Hayabusa 隼")
-                            .og_description("Build blazing-fast web apps with Rust"),
+                            .og_description("Build blazing-fast web apps with Rust")
+                            .preload("/style.css", "style")
+                            .preconnect("https://fonts.googleapis.com")
+                            .dns_prefetch("https://cdn.example.com"),
                     )
                 })
             }),
@@ -49,23 +74,33 @@ pub fn build_routes() -> RouteTable {
             RenderMode::Ssr,
             Box::new(|_req| {
                 Box::pin(async move {
+                    // Lazy-loaded image
+                    let diagram = OptimizedImage::new("/images/architecture.png", 800, 500)
+                        .alt("Hayabusa Architecture")
+                        .modern_formats(false);
+
                     RenderResult::new(html! {
                         <main class="container">
                             <h1>"About Hayabusa"</h1>
                             <p>"Hayabusa (隼, meaning 'peregrine falcon') is a full-stack web framework for Rust."</p>
+                            {diagram.render()}
                             <h2>"Why Hayabusa?"</h2>
                             <ul>
-                                <li>"Rust-powered performance: faster than Node.js-based frameworks"</li>
+                                <li>"Rust-powered performance: 50-100x faster TTFB than Node.js"</li>
                                 <li>"Next.js-inspired DX: file-based routing, layouts, SSR/SSG/ISR"</li>
                                 <li>"Type-safe HTML: compile-time HTML generation with the html! macro"</li>
                                 <li>"Zero-cost abstractions: no runtime overhead for templates"</li>
+                                <li>"Image optimization: automatic srcset, WebP/AVIF, lazy loading"</li>
+                                <li>"Font optimization: zero-CLS with size-adjust and preload"</li>
+                                <li>"Smart script loading: defer, async, module, worker strategies"</li>
                             </ul>
                         </main>
                     })
                     .with_head(
                         HeadContext::new()
                             .title("About - Hayabusa")
-                            .description("Learn about the Hayabusa web framework"),
+                            .description("Learn about the Hayabusa web framework")
+                            .prefetch("/blog"),
                     )
                 })
             }),
@@ -185,7 +220,7 @@ pub fn build_routes() -> RouteTable {
         )
 }
 
-/// Custom root layout with navigation
+/// Custom root layout with all performance optimizations
 struct RootAppLayout;
 
 impl Layout for RootAppLayout {
@@ -193,25 +228,50 @@ impl Layout for RootAppLayout {
         let title = head.title.as_deref().unwrap_or("Hayabusa App");
         let head_meta = head.render();
 
+        // Font optimization: Inter with size-adjust to prevent CLS
+        let inter = font::google_font("Inter", "/fonts/inter-var.woff2")
+            .weight(FontWeight::Range(100, 900));
+        let font_css = inter.render_css();
+        let font_preload = inter.render_preload();
+
+        // Analytics script loaded after page is interactive (non-blocking)
+        let analytics = OptimizedScript::external("/js/analytics.js")
+            .strategy(ScriptStrategy::AfterInteractive);
+
+        // Navigation prefetch: prefetch links on hover/viewport
+        let nav_prefetch = navigation_prefetch_script();
+
         format!(
             r#"<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
-    <link rel="stylesheet" href="/style.css" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+{font_preload}
+<style>{font_css}body{{font-family:{font_family}}}</style>
+<link rel="stylesheet" href="/style.css" />
 {head_meta}</head>
 <body>
-    <nav>
-        <a href="/"><strong>隼 Hayabusa</strong></a>
-        <a href="/about">About</a>
-        <a href="/blog">Blog</a>
-        <a href="/api/health">API</a>
-    </nav>
-    {children}
+<nav>
+<a href="/"><strong>隼 Hayabusa</strong></a>
+<a href="/about">About</a>
+<a href="/blog">Blog</a>
+<a href="/api/health">API</a>
+</nav>
+{children}
+{nav_prefetch}
+{analytics}
 </body>
 </html>"#,
+            title = title,
+            font_preload = font_preload,
+            font_css = font_css,
+            font_family = inter.font_family_css(),
+            head_meta = head_meta,
+            children = children,
+            nav_prefetch = nav_prefetch,
+            analytics = analytics.render(),
         )
     }
 }
