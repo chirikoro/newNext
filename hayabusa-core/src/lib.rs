@@ -50,6 +50,7 @@ pub mod layout;
 pub mod markdown;
 pub mod middleware;
 pub mod middleware_chain;
+pub mod mobile_pwa;
 pub mod ppr;
 pub mod rate_limit;
 pub mod render;
@@ -151,6 +152,12 @@ pub mod prelude {
 
     // Data Loader (DX: load data from JSON/Python/Node/any language)
     pub use crate::data_loader::DataLoader;
+
+    // Mobile PWA
+    pub use crate::mobile_pwa::{
+        MobilePwaConfig, TouchGestureConfig,
+        safe_area_css, touch_target_css, mobile_sw_additions,
+    };
 
     // Client-Side Interactivity (htmx / Alpine.js / Petite-Vue)
     pub use crate::interactivity::{
