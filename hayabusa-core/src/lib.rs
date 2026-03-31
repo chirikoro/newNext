@@ -32,23 +32,29 @@
 //! ```
 
 pub mod ab_test;
+pub mod analytics;
 pub mod app;
 pub mod auth;
 pub mod background_job;
+pub mod cache;
 pub mod component;
 pub mod config_routes;
+pub mod cors;
 pub mod critical_css;
 pub mod csp;
 pub mod data_loader;
+pub mod database;
 pub mod deploy;
 pub mod early_hints;
 pub mod email;
+pub mod env_config;
 pub mod error;
 pub mod error_boundary;
 pub mod file_upload;
 pub mod font;
 pub mod graphql;
 pub mod head;
+pub mod health;
 pub mod hot_reload;
 pub mod i18n;
 pub mod image;
@@ -60,11 +66,14 @@ pub mod middleware;
 pub mod middleware_chain;
 pub mod mobile_pwa;
 pub mod openai;
+pub mod openapi;
+pub mod pagination;
 pub mod ppr;
 pub mod rate_limit;
 pub mod render;
 pub mod router;
 pub mod script;
+pub mod search;
 pub mod seo;
 pub mod server_action;
 pub mod service_worker;
@@ -79,6 +88,7 @@ pub mod validation;
 pub mod vercel;
 pub mod view_transition;
 pub mod web_vitals;
+pub mod webhook;
 pub mod websocket;
 
 /// Prelude: import everything you need with `use hayabusa_core::prelude::*`
@@ -234,6 +244,41 @@ pub mod prelude {
         UploadConfig, UploadedFile, MultipartPart, parse_boundary, parse_multipart,
         validate_upload, validate_uploads, unique_filename, sanitize_filename, upload_form,
     };
+
+    // Database / ORM
+    pub use crate::database::{
+        Query, TableBuilder, Migration, MigrationRunner, DbConfig, DbDriver,
+    };
+
+    // Cache (in-memory + Redis)
+    pub use crate::cache::{MemoryCache, CacheStats, RedisClient, cache_key, cache_control};
+
+    // OpenAPI / Swagger
+    pub use crate::openapi::{
+        OpenApiSpec, ApiEndpoint, ApiParameter, ApiSchema, ApiServer,
+        HttpMethod, ParamLocation, SecurityScheme,
+    };
+
+    // Environment Configuration
+    pub use crate::env_config::{EnvConfig, TypedConfig, parse_dotenv};
+
+    // CORS
+    pub use crate::cors::{CorsConfig, RouteCors};
+
+    // Pagination
+    pub use crate::pagination::{OffsetPagination, CursorPagination, link_header};
+
+    // Webhook Verification
+    pub use crate::webhook::{WebhookVerifier, WebhookProvider, WebhookResult, WebhookEvent};
+
+    // Health Checks & Metrics
+    pub use crate::health::{HealthChecker, HealthStatus, HealthReport, MetricsCollector, track_request};
+
+    // Full-Text Search
+    pub use crate::search::{SearchIndex, SearchResult, search_form, highlight, tokenize};
+
+    // Analytics
+    pub use crate::analytics::{AnalyticsCollector, analytics_script, analytics_dashboard_html, detect_browser, extract_domain};
 
     // Re-export macros
     pub use hayabusa_macros::html;
