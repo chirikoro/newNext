@@ -37,6 +37,7 @@ pub mod config_routes;
 pub mod critical_css;
 pub mod csp;
 pub mod data_loader;
+pub mod deploy;
 pub mod early_hints;
 pub mod error;
 pub mod error_boundary;
@@ -65,6 +66,7 @@ pub mod state;
 pub mod static_gen;
 pub mod supabase;
 pub mod template_engine;
+pub mod vercel;
 pub mod view_transition;
 pub mod web_vitals;
 
@@ -165,6 +167,15 @@ pub mod prelude {
     pub use crate::mobile_pwa::{
         MobilePwaConfig, TouchGestureConfig,
         safe_area_css, touch_target_css, mobile_sw_additions,
+    };
+
+    // Vercel Adapter (Build Output API v3)
+    pub use crate::vercel::{VercelAdapter, VercelEdgeMiddleware, VercelCron, VercelStorage};
+
+    // Deploy Adapters (Fly.io, Docker, Railway, AWS, Cloudflare)
+    pub use crate::deploy::{
+        FlyIoAdapter, DockerAdapter, RailwayAdapter, AwsAdapter, CloudflareAdapter,
+        DeployGenerator,
     };
 
     // Client-Side Interactivity (htmx / Alpine.js / Petite-Vue)
