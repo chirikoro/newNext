@@ -31,7 +31,10 @@
 //! }
 //! ```
 
+pub mod ab_test;
 pub mod app;
+pub mod auth;
+pub mod background_job;
 pub mod component;
 pub mod config_routes;
 pub mod critical_css;
@@ -39,15 +42,19 @@ pub mod csp;
 pub mod data_loader;
 pub mod deploy;
 pub mod early_hints;
+pub mod email;
 pub mod error;
 pub mod error_boundary;
+pub mod file_upload;
 pub mod font;
+pub mod graphql;
 pub mod head;
 pub mod hot_reload;
 pub mod i18n;
 pub mod image;
 pub mod interactivity;
 pub mod layout;
+pub mod logging;
 pub mod markdown;
 pub mod middleware;
 pub mod middleware_chain;
@@ -58,6 +65,7 @@ pub mod rate_limit;
 pub mod render;
 pub mod router;
 pub mod script;
+pub mod seo;
 pub mod server_action;
 pub mod service_worker;
 pub mod session;
@@ -66,9 +74,12 @@ pub mod state;
 pub mod static_gen;
 pub mod supabase;
 pub mod template_engine;
+pub mod testing;
+pub mod validation;
 pub mod vercel;
 pub mod view_transition;
 pub mod web_vitals;
+pub mod websocket;
 
 /// Prelude: import everything you need with `use hayabusa_core::prelude::*`
 pub mod prelude {
@@ -183,6 +194,45 @@ pub mod prelude {
         AlpineComponent, ClientFramework, HtmxAttrs, InteractivityConfig,
         alpine_modal, alpine_tabs, alpine_toast_system, alpine_toggle,
         htmx_form, htmx_infinite_scroll, htmx_live_search,
+    };
+
+    // Authentication (JWT, OAuth2, password hashing)
+    pub use crate::auth::{AuthConfig, AuthProvider, Jwt, Claims, hash_password, verify_password};
+
+    // SEO (Sitemap, RSS, Open Graph, JSON-LD, robots.txt)
+    pub use crate::seo::{
+        Sitemap, RssFeed, RssItem, OpenGraph, JsonLd, RobotsTxt, RobotsRule,
+        canonical_tag, hreflang_tags, Priority, ChangeFreq,
+    };
+
+    // Form Validation
+    pub use crate::validation::{Schema, Rule, ValidationResult};
+
+    // WebSocket
+    pub use crate::websocket::{WsHub, WsRoom, WsEndpoint, WsMessage, ws_client_script, WsClientOptions};
+
+    // Test Utilities
+    pub use crate::testing::{TestRequest, TestResponse, TestClient, HtmlAssert, Benchmark};
+
+    // Structured Logging
+    pub use crate::logging::{Logger, LogLevel, RequestLog, Span};
+
+    // Email
+    pub use crate::email::{Email, EmailClient, email_template};
+
+    // Background Jobs
+    pub use crate::background_job::{Job, JobQueue, JobPriority, RecurringJob};
+
+    // A/B Testing & Feature Flags
+    pub use crate::ab_test::{Experiments, Experiment, FeatureFlag, ab_test_script, variant_css};
+
+    // GraphQL
+    pub use crate::graphql::{GqlSchema, GqlType, GqlField, GqlClient, GqlResponse, parse_query};
+
+    // File Upload
+    pub use crate::file_upload::{
+        UploadConfig, UploadedFile, MultipartPart, parse_boundary, parse_multipart,
+        validate_upload, validate_uploads, unique_filename, sanitize_filename, upload_form,
     };
 
     // Re-export macros
