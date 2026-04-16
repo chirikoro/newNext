@@ -25,6 +25,10 @@ pub struct HayabusaApp {
     port: u16,
     host: String,
     static_generator: Option<StaticGenerator>,
+    custom_routers: Vec<Router>,
+    nested_routers: Vec<(String, Router)>,
+    custom_routes: Vec<(String, axum::routing::MethodRouter)>,
+    fallback: Option<Router>,
 }
 
 impl HayabusaApp {
@@ -36,6 +40,10 @@ impl HayabusaApp {
             port: 3000,
             host: "127.0.0.1".to_string(),
             static_generator: None,
+            custom_routers: Vec::new(),
+            nested_routers: Vec::new(),
+            custom_routes: Vec::new(),
+            fallback: None,
         }
     }
 
@@ -72,6 +80,56 @@ impl HayabusaApp {
     /// Enable static site generation
     pub fn with_static_gen(mut self, output_dir: impl Into<std::path::PathBuf>) -> Self {
         self.static_generator = Some(StaticGenerator::new(output_dir));
+        self
+    }
+
+    /// Merge a custom axum Router into the application.
+    ///
+    /// ```ignore
+    /// let api = Router::new()
+    ///     .route("/api/custom", get(my_handler));
+    /// HayabusaApp::new().merge(api).serve().await?;
+    /// ```
+    pub fn merge(mut self, router: Router) -> Self {
+        self.custom_routers.push(router);
+        self
+    }
+
+    /// Nest a Router under a path prefix.
+    ///
+    /// ```ignore
+    /// let admin = Router::new()
+    ///     .route("/users", get(list_users))
+    ///     .route("/settings", get(settings));
+    /// HayabusaApp::new().nest("/admin", admin).serve().await?;
+    /// ```
+    pub fn nest(mut self, path: impl Into<String>, router: Router) -> Self {
+        self.nested_routers.push((path.into(), router));
+        self
+    }
+
+    /// Add a single route with an axum MethodRouter.
+    ///
+    /// ```ignore
+    /// use axum::routing::{get, post};
+    /// HayabusaApp::new()
+    ///     .route("/health", get(health_handler))
+    ///     .route("/submit", post(submit_handler))
+    ///     .serve().await?;
+    /// ```
+    pub fn route(mut self, path: impl Into<String>, method_router: axum::routing::MethodRouter) -> Self {
+        self.custom_routes.push((path.into(), method_router));
+        self
+    }
+
+    /// Set a fallback handler for unmatched routes.
+    ///
+    /// ```ignore
+    /// let fallback = Router::new().route("/*path", get(not_found_handler));
+    /// HayabusaApp::new().fallback(fallback).serve().await?;
+    /// ```
+    pub fn fallback(mut self, router: Router) -> Self {
+        self.fallback = Some(router);
         self
     }
 
@@ -219,6 +277,26 @@ impl HayabusaApp {
                     router = router.route(&api_route.path_pattern, post(axum_handler));
                 }
             }
+        }
+
+        // Apply custom routes
+        for (path, method_router) in self.custom_routes {
+            router = router.route(&path, method_router);
+        }
+
+        // Merge custom routers
+        for custom in self.custom_routers {
+            router = router.merge(custom);
+        }
+
+        // Nest routers under path prefixes
+        for (path, nested) in self.nested_routers {
+            router = router.nest(&path, nested);
+        }
+
+        // Apply fallback
+        if let Some(fb) = self.fallback {
+            router = router.fallback_service(fb);
         }
 
         // Apply middleware
