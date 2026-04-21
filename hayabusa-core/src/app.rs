@@ -13,9 +13,51 @@ use crate::error::HayabusaError;
 use crate::layout::{Layout, RootLayout};
 use crate::middleware::{self, MiddlewareConfig};
 use crate::render;
-use crate::router::{ApiMethod, RouteTable};
+use crate::router::{ApiMethod, LayoutEntry, RouteTable};
 use crate::state::AppState;
 use crate::static_gen::StaticGenerator;
+
+/// Build the ordered list of layout path keys for a given route pattern.
+///
+/// For `/blog/:slug` → `["/", "/blog"]` (outermost → innermost).
+/// Param segments (`:foo`) are skipped since layouts don't apply at the
+/// param level.
+fn layout_keys_for_path(pattern: &str) -> Vec<String> {
+    let mut keys = vec!["/".to_string()];
+    let parts: Vec<&str> = pattern
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut current = String::new();
+    for part in parts {
+        if part.starts_with(':') {
+            continue;
+        }
+        current.push('/');
+        current.push_str(part);
+        keys.push(current.clone());
+    }
+    keys
+}
+
+/// Resolve the layout chain for a route pattern, falling back to the provided
+/// root layout if nothing custom is registered.
+fn resolve_layouts<'a>(
+    pattern: &str,
+    layouts: &'a HashMap<String, LayoutEntry>,
+    root_fallback: &'a RootLayout,
+) -> Vec<&'a dyn Layout> {
+    let keys = layout_keys_for_path(pattern);
+    let mut chain: Vec<&dyn Layout> = keys
+        .iter()
+        .filter_map(|k| layouts.get(k).map(|e| e.layout.as_ref()))
+        .collect();
+    if chain.is_empty() {
+        chain.push(root_fallback as &dyn Layout);
+    }
+    chain
+}
 
 /// The main application builder for Hayabusa.
 pub struct HayabusaApp {
@@ -179,17 +221,13 @@ impl HayabusaApp {
                         RenderMode::Ssr => {
                             let result = handler(request).await;
                             let root_layout = RootLayout::default();
-                            let layout_refs: Vec<&dyn Layout> = if layouts_ref.contains_key("/") {
-                                vec![layouts_ref["/"].layout.as_ref()]
-                            } else {
-                                vec![&root_layout as &dyn Layout]
-                            };
+                            let layout_refs = resolve_layouts(&pattern, &layouts_ref, &root_layout);
                             render::render_page(&result, &layout_refs, &RenderMode::Ssr)
                         }
                         RenderMode::Ssg { ref revalidate } => {
                             if let Some(ref sg) = static_gen_ref {
                                 let root_layout = RootLayout::default();
-                                let layout_refs: Vec<&dyn Layout> = vec![&root_layout as &dyn Layout];
+                                let layout_refs = resolve_layouts(&pattern, &layouts_ref, &root_layout);
                                 let html = sg
                                     .get_or_render(
                                         &pattern,
@@ -227,7 +265,7 @@ impl HayabusaApp {
                             } else {
                                 let result = handler(request).await;
                                 let root_layout = RootLayout::default();
-                                let layout_refs: Vec<&dyn Layout> = vec![&root_layout as &dyn Layout];
+                                let layout_refs = resolve_layouts(&pattern, &layouts_ref, &root_layout);
                                 render::render_page(&result, &layout_refs, &render_mode)
                             }
                         }
@@ -342,3 +380,53 @@ impl Default for HayabusaApp {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_layout_keys_root() {
+        assert_eq!(layout_keys_for_path("/"), vec!["/".to_string()]);
+    }
+
+    #[test]
+    fn test_layout_keys_single_segment() {
+        assert_eq!(
+            layout_keys_for_path("/about"),
+            vec!["/".to_string(), "/about".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_layout_keys_nested() {
+        assert_eq!(
+            layout_keys_for_path("/blog/posts"),
+            vec!["/".to_string(), "/blog".to_string(), "/blog/posts".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_layout_keys_with_param() {
+        // :slug should not produce a layout boundary
+        assert_eq!(
+            layout_keys_for_path("/blog/:slug"),
+            vec!["/".to_string(), "/blog".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_layout_keys_nested_with_param() {
+        assert_eq!(
+            layout_keys_for_path("/docs/:category/:id"),
+            vec!["/".to_string(), "/docs".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_resolve_layouts_fallback_when_empty() {
+        let layouts: HashMap<String, LayoutEntry> = HashMap::new();
+        let root = RootLayout::default();
+        let chain = resolve_layouts("/any", &layouts, &root);
+        assert_eq!(chain.len(), 1);
+    }
+}
