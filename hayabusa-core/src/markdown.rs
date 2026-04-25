@@ -122,7 +122,7 @@ fn parse_simple_yaml(yaml: &str) -> HashMap<String, String> {
 /// Supports:
 /// - Headings (# to ######)
 /// - Paragraphs
-/// - **bold**, *italic*, `code`
+/// - **bold**, *italic*, ~~strikethrough~~, `code`
 /// - Code blocks (``` with optional language)
 /// - Unordered lists (- or *)
 /// - Ordered lists (1.)
@@ -130,6 +130,7 @@ fn parse_simple_yaml(yaml: &str) -> HashMap<String, String> {
 /// - Images ![alt](url)
 /// - Horizontal rules (---, ***, ___)
 /// - Blockquotes (>)
+/// - Tables (GFM-style with alignment)
 pub fn markdown_to_html(md: &str) -> String {
     let mut html = String::new();
     let mut in_code_block = false;
@@ -139,8 +140,15 @@ pub fn markdown_to_html(md: &str) -> String {
     let mut list_type = "ul"; // "ul" or "ol"
     let mut in_paragraph = false;
     let mut in_blockquote = false;
+    let mut in_table = false;
+    let mut table_alignments: Vec<Alignment> = Vec::new();
 
-    for line in md.lines() {
+    let lines: Vec<&str> = md.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+
         // Code blocks
         if line.trim().starts_with("```") {
             if in_code_block {
@@ -154,9 +162,14 @@ pub fn markdown_to_html(md: &str) -> String {
                 in_code_block = false;
             } else {
                 close_open_blocks(&mut html, &mut in_paragraph, &mut in_list, list_type, &mut in_blockquote);
+                if in_table {
+                    html.push_str("</tbody></table>\n");
+                    in_table = false;
+                }
                 code_lang = line.trim().trim_start_matches('`').to_string();
                 in_code_block = true;
             }
+            i += 1;
             continue;
         }
 
@@ -165,10 +178,54 @@ pub fn markdown_to_html(md: &str) -> String {
                 code_content.push('\n');
             }
             code_content.push_str(line);
+            i += 1;
             continue;
         }
 
         let trimmed = line.trim();
+
+        // Table detection: current line looks like a table row and next line
+        // is a separator row
+        if !in_table && is_table_row(trimmed) && i + 1 < lines.len() && is_separator_row(lines[i + 1].trim()) {
+            close_open_blocks(&mut html, &mut in_paragraph, &mut in_list, list_type, &mut in_blockquote);
+
+            // Parse header and separator
+            let headers = parse_table_cells(trimmed);
+            table_alignments = parse_alignments(lines[i + 1].trim());
+
+            html.push_str("<table>\n<thead>\n<tr>\n");
+            for (j, header) in headers.iter().enumerate() {
+                let align = table_alignments.get(j).copied().unwrap_or(Alignment::None);
+                let attr = align.attr();
+                html.push_str(&format!("<th{}>{}</th>\n", attr, inline_markdown(header.trim())));
+            }
+            html.push_str("</tr>\n</thead>\n<tbody>\n");
+            in_table = true;
+            i += 2; // skip header + separator
+            continue;
+        }
+
+        // Table data row
+        if in_table {
+            if is_table_row(trimmed) {
+                let cells = parse_table_cells(trimmed);
+                html.push_str("<tr>\n");
+                for (j, cell) in cells.iter().enumerate() {
+                    let align = table_alignments.get(j).copied().unwrap_or(Alignment::None);
+                    let attr = align.attr();
+                    html.push_str(&format!("<td{}>{}</td>\n", attr, inline_markdown(cell.trim())));
+                }
+                html.push_str("</tr>\n");
+                i += 1;
+                continue;
+            } else {
+                // End of table
+                html.push_str("</tbody>\n</table>\n");
+                in_table = false;
+                table_alignments.clear();
+                // fall through to process this line normally
+            }
+        }
 
         // Empty line
         if trimmed.is_empty() {
@@ -180,6 +237,7 @@ pub fn markdown_to_html(md: &str) -> String {
                 html.push_str("</blockquote>\n");
                 in_blockquote = false;
             }
+            i += 1;
             continue;
         }
 
@@ -187,6 +245,7 @@ pub fn markdown_to_html(md: &str) -> String {
         if trimmed == "---" || trimmed == "***" || trimmed == "___" {
             close_open_blocks(&mut html, &mut in_paragraph, &mut in_list, list_type, &mut in_blockquote);
             html.push_str("<hr />\n");
+            i += 1;
             continue;
         }
 
@@ -202,6 +261,7 @@ pub fn markdown_to_html(md: &str) -> String {
                 id = id,
                 content = inline_markdown(content)
             ));
+            i += 1;
             continue;
         }
 
@@ -217,6 +277,7 @@ pub fn markdown_to_html(md: &str) -> String {
             }
             let content = trimmed[1..].trim();
             html.push_str(&format!("<p>{}</p>\n", inline_markdown(content)));
+            i += 1;
             continue;
         }
 
@@ -233,6 +294,7 @@ pub fn markdown_to_html(md: &str) -> String {
             }
             let content = trimmed[2..].trim();
             html.push_str(&format!("<li>{}</li>\n", inline_markdown(content)));
+            i += 1;
             continue;
         }
 
@@ -251,6 +313,7 @@ pub fn markdown_to_html(md: &str) -> String {
                     }
                     let content = trimmed[dot_pos + 2..].trim();
                     html.push_str(&format!("<li>{}</li>\n", inline_markdown(content)));
+                    i += 1;
                     continue;
                 }
             }
@@ -270,6 +333,8 @@ pub fn markdown_to_html(md: &str) -> String {
             html.push('\n');
         }
         html.push_str(&inline_markdown(trimmed));
+
+        i += 1;
     }
 
     // Close any open blocks
@@ -282,8 +347,87 @@ pub fn markdown_to_html(md: &str) -> String {
     if in_blockquote {
         html.push_str("</blockquote>\n");
     }
+    if in_table {
+        html.push_str("</tbody>\n</table>\n");
+    }
 
     html
+}
+
+// ─── Table Helpers ──────────────────────────────────────────
+
+/// Column alignment parsed from the separator row
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Alignment {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+impl Alignment {
+    fn attr(&self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Left => " style=\"text-align:left\"",
+            Self::Center => " style=\"text-align:center\"",
+            Self::Right => " style=\"text-align:right\"",
+        }
+    }
+}
+
+/// Check if a line looks like a table row (`| ... | ... |`)
+fn is_table_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('|') && trimmed.ends_with('|') && trimmed.matches('|').count() >= 2
+}
+
+/// Check if a line is a table separator row (`| --- | --- |`)
+fn is_separator_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+        return false;
+    }
+    let inner = &trimmed[1..trimmed.len() - 1];
+    inner.split('|').all(|cell| {
+        let c = cell.trim();
+        !c.is_empty()
+            && c.chars().all(|ch| ch == '-' || ch == ':' || ch == ' ')
+            && c.contains('-')
+    })
+}
+
+/// Parse cells from a table row
+fn parse_table_cells(line: &str) -> Vec<String> {
+    let trimmed = line.trim();
+    // Strip leading/trailing pipes and split on |
+    let inner = if trimmed.starts_with('|') && trimmed.ends_with('|') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    inner.split('|').map(|c| c.to_string()).collect()
+}
+
+/// Parse alignment from separator row
+fn parse_alignments(line: &str) -> Vec<Alignment> {
+    let trimmed = line.trim();
+    let inner = if trimmed.starts_with('|') && trimmed.ends_with('|') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    inner.split('|').map(|cell| {
+        let c = cell.trim();
+        let left = c.starts_with(':');
+        let right = c.ends_with(':');
+        match (left, right) {
+            (true, true) => Alignment::Center,
+            (true, false) => Alignment::Left,
+            (false, true) => Alignment::Right,
+            (false, false) => Alignment::None,
+        }
+    }).collect()
 }
 
 fn close_open_blocks(
@@ -351,6 +495,21 @@ fn inline_markdown(text: &str) -> String {
             let code = &result[start + 1..start + 1 + end];
             let replacement = format!("<code>{}</code>", html_escape_code(code));
             result = format!("{}{}{}", &result[..start], replacement, &result[start + 1 + end + 1..]);
+        } else {
+            break;
+        }
+    }
+
+    // Strikethrough ~~text~~
+    while let Some(start) = result.find("~~") {
+        if let Some(end) = result[start + 2..].find("~~") {
+            let struck = &result[start + 2..start + 2 + end];
+            result = format!(
+                "{}<del>{}</del>{}",
+                &result[..start],
+                struck,
+                &result[start + 2 + end + 2..]
+            );
         } else {
             break;
         }
@@ -525,6 +684,91 @@ mod tests {
         let md = "```\n<script>alert('xss')</script>\n```";
         let html = markdown_to_html(md);
         assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn test_table_basic() {
+        let md = "| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<thead>"));
+        assert!(html.contains("<tbody>"));
+        assert!(html.contains("<th>Name</th>"));
+        assert!(html.contains("<th>Age</th>"));
+        assert!(html.contains("<td>Alice</td>"));
+        assert!(html.contains("<td>30</td>"));
+        assert!(html.contains("<td>Bob</td>"));
+        assert!(html.contains("<td>25</td>"));
+        assert!(html.contains("</table>"));
+    }
+
+    #[test]
+    fn test_table_alignment() {
+        let md = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| L | C | R |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<th style=\"text-align:left\">"));
+        assert!(html.contains("<th style=\"text-align:center\">"));
+        assert!(html.contains("<th style=\"text-align:right\">"));
+        assert!(html.contains("<td style=\"text-align:left\">L</td>"));
+        assert!(html.contains("<td style=\"text-align:center\">C</td>"));
+        assert!(html.contains("<td style=\"text-align:right\">R</td>"));
+    }
+
+    #[test]
+    fn test_table_inline_formatting() {
+        let md = "| Header |\n| --- |\n| **bold** and *italic* |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<strong>bold</strong>"));
+        assert!(html.contains("<em>italic</em>"));
+    }
+
+    #[test]
+    fn test_table_single_column() {
+        let md = "| Solo |\n| --- |\n| data |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<th>Solo</th>"));
+        assert!(html.contains("<td>data</td>"));
+    }
+
+    #[test]
+    fn test_table_many_columns() {
+        let md = "| A | B | C | D | E |\n| - | - | - | - | - |\n| 1 | 2 | 3 | 4 | 5 |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<th>A</th>"));
+        assert!(html.contains("<th>E</th>"));
+        assert!(html.contains("<td>1</td>"));
+        assert!(html.contains("<td>5</td>"));
+    }
+
+    #[test]
+    fn test_table_followed_by_paragraph() {
+        let md = "| H |\n| - |\n| d |\n\nA paragraph after.";
+        let html = markdown_to_html(md);
+        assert!(html.contains("</table>"));
+        assert!(html.contains("<p>A paragraph after.</p>"));
+    }
+
+    #[test]
+    fn test_table_with_empty_cells() {
+        let md = "| A | B |\n| - | - |\n| x |  |";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<td>x</td>"));
+        assert!(html.contains("<td></td>"));
+    }
+
+    #[test]
+    fn test_is_separator_row() {
+        assert!(is_separator_row("| --- | --- |"));
+        assert!(is_separator_row("| :--- | :---: | ---: |"));
+        assert!(is_separator_row("|---|---|"));
+        assert!(!is_separator_row("| abc | def |"));
+        assert!(!is_separator_row("not a table"));
+    }
+
+    #[test]
+    fn test_strikethrough() {
+        let html = markdown_to_html("This is ~~deleted~~ text.");
+        assert!(html.contains("<del>deleted</del>"));
     }
 
     #[test]
