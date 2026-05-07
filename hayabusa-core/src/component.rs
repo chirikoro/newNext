@@ -24,6 +24,10 @@ pub struct RenderResult {
     pub html: String,
     /// Head context (title, meta tags) to inject into <head>
     pub head: HeadContext,
+    /// HTTP status code (default: 200)
+    pub status: u16,
+    /// Custom response headers
+    pub headers: Vec<(String, String)>,
 }
 
 impl RenderResult {
@@ -31,12 +35,52 @@ impl RenderResult {
         Self {
             html,
             head: HeadContext::default(),
+            status: 200,
+            headers: Vec::new(),
         }
     }
 
     pub fn with_head(mut self, head: HeadContext) -> Self {
         self.head = head;
         self
+    }
+
+    /// Set HTTP status code
+    pub fn status(mut self, code: u16) -> Self {
+        self.status = code;
+        self
+    }
+
+    /// Return a 404 Not Found response
+    pub fn not_found(html: String) -> Self {
+        Self::new(html).status(404)
+    }
+
+    /// Return a redirect response (302 by default)
+    pub fn redirect(url: &str) -> Self {
+        Self {
+            html: String::new(),
+            head: HeadContext::default(),
+            status: 302,
+            headers: vec![("location".to_string(), url.to_string())],
+        }
+    }
+
+    /// Return a permanent redirect (301)
+    pub fn permanent_redirect(url: &str) -> Self {
+        Self::redirect(url).status(301)
+    }
+
+    /// Add a custom response header
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Check if this result is a redirect (3xx status with location header)
+    pub fn is_redirect(&self) -> bool {
+        (300..400).contains(&self.status)
+            && self.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("location"))
     }
 }
 
@@ -351,5 +395,51 @@ mod tests {
         let preload_pos = rendered.find("rel=\"preload\"").unwrap();
         let stylesheet_pos = rendered.find("rel=\"stylesheet\"").unwrap();
         assert!(preload_pos < stylesheet_pos, "Preload hints should come before stylesheets");
+    }
+
+    #[test]
+    fn test_render_result_default_200() {
+        let r = RenderResult::new("<p>hello</p>".into());
+        assert_eq!(r.status, 200);
+        assert!(r.headers.is_empty());
+        assert!(!r.is_redirect());
+    }
+
+    #[test]
+    fn test_render_result_not_found() {
+        let r = RenderResult::not_found("<h1>404</h1>".into());
+        assert_eq!(r.status, 404);
+        assert!(!r.is_redirect());
+        assert!(r.html.contains("404"));
+    }
+
+    #[test]
+    fn test_render_result_custom_status() {
+        let r = RenderResult::new("<p>error</p>".into()).status(500);
+        assert_eq!(r.status, 500);
+    }
+
+    #[test]
+    fn test_render_result_redirect() {
+        let r = RenderResult::redirect("/new-location");
+        assert_eq!(r.status, 302);
+        assert!(r.is_redirect());
+        assert!(r.headers.iter().any(|(k, v)| k == "location" && v == "/new-location"));
+    }
+
+    #[test]
+    fn test_render_result_permanent_redirect() {
+        let r = RenderResult::permanent_redirect("/moved");
+        assert_eq!(r.status, 301);
+        assert!(r.is_redirect());
+    }
+
+    #[test]
+    fn test_render_result_custom_header() {
+        let r = RenderResult::new("".into())
+            .header("X-Custom", "value")
+            .header("X-Another", "val2");
+        assert_eq!(r.headers.len(), 2);
+        assert!(r.headers.iter().any(|(k, v)| k == "X-Custom" && v == "value"));
     }
 }

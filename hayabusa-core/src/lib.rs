@@ -109,7 +109,7 @@ pub mod prelude {
     pub use crate::router::{ApiMethod, RouteTable};
     pub use crate::script::{navigation_prefetch_script, OptimizedScript, ScriptStrategy};
     pub use crate::state::AppState;
-    pub use crate::static_gen::StaticGenerator;
+    pub use crate::static_gen::{StaticGenerator, CachedResponse};
 
     // Server Actions
     pub use crate::server_action::{

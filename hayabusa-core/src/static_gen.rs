@@ -11,8 +11,18 @@ use crate::layout::{Layout, RootLayout};
 #[derive(Debug, Clone)]
 struct CachedPage {
     html: String,
+    status: u16,
+    headers: Vec<(String, String)>,
     generated_at: Instant,
     revalidate_after: Option<Duration>,
+}
+
+/// The result of a cached page lookup, carrying HTML + status + headers
+#[derive(Debug, Clone)]
+pub struct CachedResponse {
+    pub html: String,
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
 }
 
 /// Static site generator and ISR cache manager
@@ -71,7 +81,7 @@ impl StaticGenerator {
         handler: &PageHandler,
         layouts: &[&dyn Layout],
         revalidate: Option<Duration>,
-    ) -> String {
+    ) -> CachedResponse {
         // Check cache
         if let Some(cached) = self.cache.get(path) {
             let is_stale = cached
@@ -80,23 +90,31 @@ impl StaticGenerator {
                 .unwrap_or(false);
 
             if !is_stale {
-                return cached.html.clone();
+                return CachedResponse {
+                    html: cached.html.clone(),
+                    status: cached.status,
+                    headers: cached.headers.clone(),
+                };
             }
 
             // Stale: return cached version but trigger background revalidation
-            let html = cached.html.clone();
+            let resp = CachedResponse {
+                html: cached.html.clone(),
+                status: cached.status,
+                headers: cached.headers.clone(),
+            };
             let path = path.to_string();
 
-            // Can't pass handler reference to spawned task, so just mark for revalidation
-            // The actual revalidation happens in the serve loop
             tracing::info!("ISR: serving stale page for {}, revalidation needed", path);
 
-            return html;
+            return resp;
         }
 
         // Not cached: render fresh
         let request = PageRequest::new(path.to_string());
         let result = handler(request).await;
+        let status = result.status;
+        let headers = result.headers.clone();
 
         let html = if layouts.is_empty() {
             let root = RootLayout::default();
@@ -110,12 +128,14 @@ impl StaticGenerator {
             path.to_string(),
             CachedPage {
                 html: html.clone(),
+                status,
+                headers: headers.clone(),
                 generated_at: Instant::now(),
                 revalidate_after: revalidate,
             },
         );
 
-        html
+        CachedResponse { html, status, headers }
     }
 
     /// Invalidate a cached page

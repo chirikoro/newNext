@@ -228,7 +228,7 @@ impl HayabusaApp {
                             if let Some(ref sg) = static_gen_ref {
                                 let root_layout = RootLayout::default();
                                 let layout_refs = resolve_layouts(&pattern, &layouts_ref, &root_layout);
-                                let html = sg
+                                let cached = sg
                                     .get_or_render(
                                         &pattern,
                                         &handler,
@@ -237,8 +237,20 @@ impl HayabusaApp {
                                     )
                                     .await;
 
+                                // Handle redirects from cached page
+                                if (300..400).contains(&cached.status) {
+                                    let mut builder = axum::response::Response::builder()
+                                        .status(cached.status);
+                                    for (name, value) in &cached.headers {
+                                        builder = builder.header(name.as_str(), value.as_str());
+                                    }
+                                    return builder
+                                        .body(axum::body::Body::empty())
+                                        .unwrap();
+                                }
+
                                 // ETag check for cached content
-                                let etag = render::generate_etag(&html);
+                                let etag = render::generate_etag(&cached.html);
                                 if let Some(resp) = render::check_etag(
                                     if_none_match.as_deref(),
                                     &etag,
@@ -246,7 +258,7 @@ impl HayabusaApp {
                                     return resp;
                                 }
 
-                                let minified = render::minify_html(&html);
+                                let minified = render::minify_html(&cached.html);
                                 let cache_header = if revalidate.is_some() {
                                     let secs = revalidate.unwrap().as_secs();
                                     format!("public, s-maxage={}, stale-while-revalidate={}", secs, secs * 2)
@@ -254,12 +266,18 @@ impl HayabusaApp {
                                     "public, max-age=31536000, immutable".to_string()
                                 };
 
-                                axum::response::Response::builder()
-                                    .status(200)
+                                let mut builder = axum::response::Response::builder()
+                                    .status(cached.status)
                                     .header("content-type", "text/html; charset=utf-8")
                                     .header("cache-control", cache_header)
                                     .header("etag", &etag)
-                                    .header("vary", "Accept-Encoding")
+                                    .header("vary", "Accept-Encoding");
+
+                                for (name, value) in &cached.headers {
+                                    builder = builder.header(name.as_str(), value.as_str());
+                                }
+
+                                builder
                                     .body(axum::body::Body::from(minified))
                                     .unwrap()
                             } else {

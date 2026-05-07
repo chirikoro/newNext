@@ -15,6 +15,18 @@ pub fn render_page(
     layouts: &[&dyn Layout],
     render_mode: &RenderMode,
 ) -> Response {
+    // Handle redirects: skip layout/rendering, just send the redirect
+    if content.is_redirect() {
+        let status = StatusCode::from_u16(content.status).unwrap_or(StatusCode::FOUND);
+        let mut builder = Response::builder().status(status);
+        for (name, value) in &content.headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        return builder
+            .body(axum::body::Body::empty())
+            .unwrap();
+    }
+
     let html = if layouts.is_empty() {
         let root = RootLayout::default();
         root.render(&content.html, &content.head)
@@ -25,8 +37,9 @@ pub fn render_page(
     let minified = minify_html(&html);
     let etag = generate_etag(&minified);
 
+    let status = StatusCode::from_u16(content.status).unwrap_or(StatusCode::OK);
     let mut builder = Response::builder()
-        .status(StatusCode::OK)
+        .status(status)
         .header("content-type", "text/html; charset=utf-8")
         .header("etag", &etag)
         .header("vary", "Accept-Encoding");
@@ -51,6 +64,11 @@ pub fn render_page(
     let link_headers = build_preload_headers(&content.head);
     if !link_headers.is_empty() {
         builder = builder.header("link", link_headers);
+    }
+
+    // Apply custom headers from RenderResult
+    for (name, value) in &content.headers {
+        builder = builder.header(name.as_str(), value.as_str());
     }
 
     builder
